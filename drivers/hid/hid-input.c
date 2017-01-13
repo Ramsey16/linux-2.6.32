@@ -327,6 +327,10 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		case 0x44: /* BarrelSwitch */
 			map_key_clear(BTN_STYLUS);
 			break;
+          
+                case 0x51: /* ContactID */
+			device->quirks |= HID_QUIRK_MULTITOUCH;
+			goto unknown;
 
 		default:  goto unknown;
 		}
@@ -527,7 +531,10 @@ mapped:
 		if (field->application == HID_GD_GAMEPAD || field->application == HID_GD_JOYSTICK)
 			input_set_abs_params(input, usage->code, a, b, (b - a) >> 8, (b - a) >> 4);
 		else	input_set_abs_params(input, usage->code, a, b, 0, 0);
-
+                
+                /* use a larger default input buffer for MT devices */
+		if (usage->code == ABS_MT_POSITION_X && input->hint_events_per_packet == 0)
+			input_set_events_per_packet(input, 60);
 	}
 
 	if (usage->type == EV_ABS &&
@@ -647,6 +654,9 @@ void hidinput_report_event(struct hid_device *hid, struct hid_report *report)
 {
 	struct hid_input *hidinput;
 
+        if (hid->quirks & HID_QUIRK_NO_INPUT_SYNC)
+		return;
+
 	list_for_each_entry(hidinput, &hid->inputs, list)
 		input_sync(hidinput->input);
 }
@@ -683,6 +693,24 @@ static void hidinput_close(struct input_dev *dev)
 	hid->ll_driver->close(hid);
 }
 
+static void report_features(struct hid_device *hid)
+{
+	struct hid_driver *drv = hid->driver;
+	struct hid_report_enum *rep_enum;
+	struct hid_report *rep;
+	int i, j;
+
+	if (!drv->feature_mapping)
+		return;
+
+	rep_enum = &hid->report_enum[HID_FEATURE_REPORT];
+	list_for_each_entry(rep, &rep_enum->report_list, list)
+		for (i = 0; i < rep->maxfield; i++)
+			for (j = 0; j < rep->field[i]->maxusage; j++)
+				drv->feature_mapping(hid, rep->field[i],
+						     rep->field[i]->usage + j);
+}
+
 /*
  * Register the input device; print a message.
  * Configure the input layer interface
@@ -695,11 +723,10 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 	struct hid_input *hidinput = NULL;
 	struct input_dev *input_dev;
 	int i, j, k;
-	int max_report_type = HID_OUTPUT_REPORT;
-
+//	int max_report_type = HID_OUTPUT_REPORT;
 	INIT_LIST_HEAD(&hid->inputs);
 
-	if (!force) {
+/*	if (!force) {
 		for (i = 0; i < hid->maxcollection; i++) {
 			struct hid_collection *col = &hid->collection[i];
 			if (col->type == HID_COLLECTION_APPLICATION ||
@@ -711,11 +738,13 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 		if (i == hid->maxcollection)
 			return -1;
 	}
+*/
+	report_features(hid);
 
-	if (hid->quirks & HID_QUIRK_SKIP_OUTPUT_REPORTS)
-		max_report_type = HID_INPUT_REPORT;
-
-	for (k = HID_INPUT_REPORT; k <= max_report_type; k++)
+	for (k = HID_INPUT_REPORT; k <= HID_OUTPUT_REPORT; k++) {
+		if (k == HID_OUTPUT_REPORT &&
+			hid->quirks & HID_QUIRK_SKIP_OUTPUT_REPORTS)
+			continue;
 		list_for_each_entry(report, &hid->report_enum[k].report_list, list) {
 
 			if (!report->maxfield)
@@ -768,6 +797,14 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 				hidinput = NULL;
 			}
 		}
+        }
+
+	if (hid->quirks & HID_QUIRK_MULTITOUCH) {
+		/* generic hid does not know how to handle multitouch devices */
+		if (hidinput)
+			goto out_cleanup;
+		goto out_unwind;
+	}
 
 	if (hidinput && input_register_device(hidinput->input))
 		goto out_cleanup;
@@ -775,6 +812,7 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 	return 0;
 
 out_cleanup:
+        list_del(&hidinput->list);
 	input_free_device(hidinput->input);
 	kfree(hidinput);
 out_unwind:

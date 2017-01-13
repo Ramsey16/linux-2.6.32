@@ -87,6 +87,18 @@ the contact. The ratio ABS_MT_TOUCH_MAJOR / ABS_MT_WIDTH_MAJOR approximates
 the notion of pressure. The fingers of the hand and the palm all have
 different characteristic widths [1].
 
+ABS_MT_DISTANCE
+
+The distance, in surface units, between the contact and the surface. Zero
+distance means the contact is touching the surface. A positive number means
+the contact is hovering above the surface.
+
+ABS_MT_DISTANCE
+
+The distance, in surface units, between the contact and the surface. Zero
+distance means the contact is touching the surface. A positive number means
+the contact is hovering above the surface.
+
 ABS_MT_ORIENTATION
 
 The orientation of the ellipse. The value should describe a signed quarter
@@ -119,15 +131,16 @@ MT_TOOL_PEN [2].
 ABS_MT_BLOB_ID
 
 The BLOB_ID groups several packets together into one arbitrarily shaped
-contact. This is a low-level anonymous grouping, and should not be confused
-with the high-level trackingID [5]. Most kernel drivers will not have blob
-capability, and can safely omit the event.
+contact. This is a low-level anonymous grouping for type A devices, and
+should not be confused with the high-level trackingID [5]. Most type A
+devices do not have blob capability, so drivers can safely omit this event.
 
 ABS_MT_TRACKING_ID
 
 The TRACKING_ID identifies an initiated contact throughout its life cycle
-[5]. There are currently only a few devices that support it, so this event
-should normally be omitted.
+[5]. This event is mandatory for type B devices. The value range of the
+TRACKING_ID should be large enough to ensure unique identification of a
+contact maintained over an extended period of time.
 
 
 Event Computation
@@ -154,20 +167,11 @@ finger along the X axis (1).
 Finger Tracking
 ---------------
 
-The kernel driver should generate an arbitrary enumeration of the set of
-anonymous contacts currently on the surface. The order in which the packets
-appear in the event stream is not important.
-
 The process of finger tracking, i.e., to assign a unique trackingID to each
-initiated contact on the surface, is left to user space; preferably the
-multi-touch X driver [3]. In that driver, the trackingID stays the same and
-unique until the contact vanishes (when the finger leaves the surface). The
-problem of assigning a set of anonymous fingers to a set of identified
-fingers is a euclidian bipartite matching problem at each event update, and
-relies on a sufficiently rapid update rate.
-
-There are a few devices that support trackingID in hardware. User space can
-make use of these native identifiers to reduce bandwidth and cpu usage.
+initiated contact on the surface, is a Euclidian Bipartite Matching
+problem.  At each event synchronization, the set of actual contacts is
+matched to the set of contacts from the previous synchronization. A full
+implementation can be found in [3].
 
 
 Notes

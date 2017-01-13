@@ -55,6 +55,12 @@ source "drivers/hid/usbhid/Kconfig"
 menu "Special HID drivers"
 	depends on HID
 
+config HID_3M_PCT
+	tristate "3M PCT"
+	depends on USB_HID
+	---help---
+	Support for 3M PCT touch screens.
+
 config HID_A4TECH
 	tristate "A4 tech" if EMBEDDED
 	depends on USB_HID
@@ -79,6 +85,12 @@ config HID_BELKIN
 	default !EMBEDDED
 	---help---
 	Support for Belkin Flip KVM and Wireless keyboard.
+
+config HID_CANDO
+	tristate "Cando dual touch panel"
+	depends on USB_HID
+	---help---
+	Support for Cando dual touch panel.
 
 config HID_CHERRY
 	tristate "Cherry" if EMBEDDED
@@ -190,12 +202,61 @@ config HID_MICROSOFT
 	---help---
 	Support for Microsoft devices that are not fully compliant with HID standard.
 
+config HID_MOSART
+	tristate "MosArt"
+	depends on USB_HID
+	---help---
+	Support for MosArt dual-touch panels.
+
 config HID_MONTEREY
 	tristate "Monterey" if EMBEDDED
 	depends on USB_HID
 	default !EMBEDDED
 	---help---
 	Support for Monterey Genius KB29E.
+
+config HID_MULTITOUCH
+	tristate "HID Multitouch panels"
+	depends on USB_HID
+	---help---
+	  Generic support for HID multitouch panels.
+
+	  Say Y here if you have one of the following devices:
+	  - 3M PCT touch screens
+	  - ActionStar dual touch panels
+	  - Atmel panels
+	  - Cando dual touch panels
+	  - Chunghwa panels
+	  - CVTouch panels
+	  - Cypress TrueTouch panels
+	  - Elo TouchSystems IntelliTouch Plus panels
+	  - GeneralTouch 'Sensing Win7-TwoFinger' panels
+	  - GoodTouch panels
+	  - Hanvon dual touch panels
+	  - Ilitek dual touch panels
+	  - IrTouch Infrared USB panels
+	  - LG Display panels (Dell ST2220Tc)
+	  - Lumio CrystalTouch panels
+	  - MosArt dual-touch panels
+	  - Panasonic multitouch panels
+	  - PenMount dual touch panels
+	  - Perixx Peripad 701 touchpad
+	  - PixArt optical touch screen
+	  - Pixcir dual touch panels
+	  - Quanta panels
+	  - eGalax dual-touch panels, including the Joojoo and Wetab tablets
+	  - Stantum multitouch panels
+	  - Touch International Panels
+	  - Unitec Panels
+	  - XAT optical touch panels
+	  - Xiroku optical touch panels
+	  - Zytronic touch panels
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called hid-multitouch.
+
 
 config HID_NTRIG
 	tristate "NTrig" if EMBEDDED
@@ -240,6 +301,12 @@ config HID_SONY
 	default !EMBEDDED
 	---help---
 	Support for Sony PS3 controller.
+
+config HID_STANTUM
+	tristate "Stantum"
+	depends on USB_HID
+	---help---
+	Support for Stantum multitouch panel.
 
 config HID_SUNPLUS
 	tristate "Sunplus" if EMBEDDED

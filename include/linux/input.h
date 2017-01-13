@@ -82,6 +82,12 @@ struct input_absinfo {
 
 #define EVIOCGRAB		_IOW('E', 0x90, int)			/* Grab/Release device */
 
+#define INPUT_PROP_DIRECT       0x01
+#define INPUT_PROP_POINTER      0x00
+
+#define INPUT_PROP_MAX          0x1f
+#define INPUT_PROP_CNT          (INPUT_PROP_MAX + 1)
+
 /*
  * Event types
  */
@@ -595,6 +601,8 @@ struct input_absinfo {
 #define KEY_NUMERIC_STAR	0x20a
 #define KEY_NUMERIC_POUND	0x20b
 
+#define BTN_TRIGGER_HAPPY               0x2c0
+
 /* We avoid low common keys in module aliases so they don't get huge. */
 #define KEY_MIN_INTERESTING	KEY_MUTE
 #define KEY_MAX			0x2ff
@@ -648,6 +656,7 @@ struct input_absinfo {
 #define ABS_VOLUME		0x20
 #define ABS_MISC		0x28
 
+#define ABS_MT_SLOT		0x2f	/* MT slot being modified */
 #define ABS_MT_TOUCH_MAJOR	0x30	/* Major axis of touching ellipse */
 #define ABS_MT_TOUCH_MINOR	0x31	/* Minor axis (omit if circular) */
 #define ABS_MT_WIDTH_MAJOR	0x32	/* Major axis of approaching ellipse */
@@ -658,6 +667,15 @@ struct input_absinfo {
 #define ABS_MT_TOOL_TYPE	0x37	/* Type of touching device */
 #define ABS_MT_BLOB_ID		0x38	/* Group a set of packets as a blob */
 #define ABS_MT_TRACKING_ID	0x39	/* Unique ID of initiated contact */
+#define ABS_MT_PRESSURE		0x3a	/* Pressure on contact area */
+#define ABS_MT_DISTANCE		0x3b	/* Contact hover distance */
+
+#ifdef __KERNEL__
+/* Implementation details, userspace should not care about these */
+#define ABS_MT_FIRST		ABS_MT_TOUCH_MAJOR
+#define ABS_MT_LAST		ABS_MT_DISTANCE
+#endif
+
 
 #define ABS_MAX			0x3f
 #define ABS_CNT			(ABS_MAX+1)
@@ -717,7 +735,7 @@ struct input_absinfo {
 #define REP_DELAY		0x00
 #define REP_PERIOD		0x01
 #define REP_MAX			0x01
-
+#define REP_CNT			(REP_MAX+1)
 /*
  * Sounds
  */
@@ -762,7 +780,7 @@ struct input_absinfo {
  */
 #define MT_TOOL_FINGER		0
 #define MT_TOOL_PEN		1
-
+#define MT_TOOL_MAX		1
 /*
  * Values describing the status of a force-feedback effect
  */
@@ -1074,7 +1092,8 @@ struct input_dev {
 	const char *phys;
 	const char *uniq;
 	struct input_id id;
-
+        
+        unsigned long propbit[BITS_TO_LONGS(INPUT_PROP_CNT)];
 	unsigned long evbit[BITS_TO_LONGS(EV_CNT)];
 	unsigned long keybit[BITS_TO_LONGS(KEY_CNT)];
 	unsigned long relbit[BITS_TO_LONGS(REL_CNT)];
@@ -1084,6 +1103,8 @@ struct input_dev {
 	unsigned long sndbit[BITS_TO_LONGS(SND_CNT)];
 	unsigned long ffbit[BITS_TO_LONGS(FF_CNT)];
 	unsigned long swbit[BITS_TO_LONGS(SW_CNT)];
+
+        unsigned int hint_events_per_packet;       
 
 	unsigned int keycodemax;
 	unsigned int keycodesize;
@@ -1096,21 +1117,19 @@ struct input_dev {
 	unsigned int repeat_key;
 	struct timer_list timer;
 
-	int sync;
+	int rep[REP_CNT];
 
-	int abs[ABS_MAX + 1];
-	int rep[REP_MAX + 1];
+        struct input_mt_slot *mt;
+	int mtsize;
+	int slot;
+	int trkid;
+
+	struct input_absinfo *absinfo;
 
 	unsigned long key[BITS_TO_LONGS(KEY_CNT)];
 	unsigned long led[BITS_TO_LONGS(LED_CNT)];
 	unsigned long snd[BITS_TO_LONGS(SND_CNT)];
 	unsigned long sw[BITS_TO_LONGS(SW_CNT)];
-
-	int absmax[ABS_MAX + 1];
-	int absmin[ABS_MAX + 1];
-	int absfuzz[ABS_MAX + 1];
-	int absflat[ABS_MAX + 1];
-	int absres[ABS_MAX + 1];
 
 	int (*open)(struct input_dev *dev);
 	void (*close)(struct input_dev *dev);
@@ -1124,6 +1143,8 @@ struct input_dev {
 
 	unsigned int users;
 	bool going_away;
+
+        bool sync;        
 
 	struct device dev;
 
@@ -1218,6 +1239,8 @@ struct input_handler {
 	void *private;
 
 	void (*event)(struct input_handle *handle, unsigned int type, unsigned int code, int value);
+        bool (*filter)(struct input_handle *handle, unsigned int type, unsigned int code, int value);
+        bool (*match)(struct input_handler *handler, struct input_dev *dev);
 	int (*connect)(struct input_handler *handler, struct input_dev *dev, const struct input_device_id *id);
 	void (*disconnect)(struct input_handle *handle);
 	void (*start)(struct input_handle *handle);
@@ -1340,18 +1363,52 @@ static inline void input_mt_sync(struct input_dev *dev)
 
 void input_set_capability(struct input_dev *dev, unsigned int type, unsigned int code);
 
-static inline void input_set_abs_params(struct input_dev *dev, int axis, int min, int max, int fuzz, int flat)
+/**
+ * input_set_events_per_packet - tell handlers about the driver event rate
+ * @dev: the input device used by the driver
+ * @n_events: the average number of events between calls to input_sync()
+ *
+ * If the event rate sent from a device is unusually large, use this
+ * function to set the expected event rate. This will allow handlers
+ * to set up an appropriate buffer size for the event stream, in order
+ * to minimize information loss.
+ */
+static inline void input_set_events_per_packet(struct input_dev *dev, int n_events)
 {
-	dev->absmin[axis] = min;
-	dev->absmax[axis] = max;
-	dev->absfuzz[axis] = fuzz;
-	dev->absflat[axis] = flat;
-
-	dev->absbit[BIT_WORD(axis)] |= BIT_MASK(axis);
+	dev->hint_events_per_packet = n_events;
 }
 
-int input_get_keycode(struct input_dev *dev, int scancode, int *keycode);
-int input_set_keycode(struct input_dev *dev, int scancode, int keycode);
+void input_alloc_absinfo(struct input_dev *dev);
+void input_set_abs_params(struct input_dev *dev, unsigned int axis,
+			  int min, int max, int fuzz, int flat);
+
+#define INPUT_GENERATE_ABS_ACCESSORS(_suffix, _item)			\
+static inline int input_abs_get_##_suffix(struct input_dev *dev,	\
+					  unsigned int axis)		\
+{									\
+	return dev->absinfo ? dev->absinfo[axis]._item : 0;		\
+}									\
+									\
+static inline void input_abs_set_##_suffix(struct input_dev *dev,	\
+					   unsigned int axis, int val)	\
+{									\
+	input_alloc_absinfo(dev);					\
+	if (dev->absinfo)						\
+		dev->absinfo[axis]._item = val;				\
+}
+
+INPUT_GENERATE_ABS_ACCESSORS(val, value)
+INPUT_GENERATE_ABS_ACCESSORS(min, minimum)
+INPUT_GENERATE_ABS_ACCESSORS(max, maximum)
+INPUT_GENERATE_ABS_ACCESSORS(fuzz, fuzz)
+INPUT_GENERATE_ABS_ACCESSORS(flat, flat)
+INPUT_GENERATE_ABS_ACCESSORS(res, resolution)
+
+
+int input_get_keycode(struct input_dev *dev, 
+                      unsigned int scancode, unsigned int *keycode);
+int input_set_keycode(struct input_dev *dev, 
+                      unsigned int scancode, unsigned int keycode);
 
 extern struct class input_class;
 

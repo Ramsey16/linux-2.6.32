@@ -71,7 +71,7 @@
 #include <linux/timer.h>
 #include <linux/workqueue.h>
 #include <linux/input.h>
-
+#include <linux/semaphore.h>
 /*
  * We parse each description item into this structure. Short items data
  * values are expanded to 32-bit signed int, long items contain a pointer
@@ -308,11 +308,15 @@ struct hid_item {
 #define HID_QUIRK_NOTOUCH			0x00000002
 #define HID_QUIRK_IGNORE			0x00000004
 #define HID_QUIRK_NOGET				0x00000008
+#define HID_QUIRK_HIDDEV_FORCE                  0x00000010
 #define HID_QUIRK_BADPAD			0x00000020
 #define HID_QUIRK_MULTI_INPUT			0x00000040
 #define HID_QUIRK_SKIP_OUTPUT_REPORTS		0x00010000
 #define HID_QUIRK_FULLSPEED_INTERVAL		0x10000000
-
+#define HID_QUIRK_NO_INIT_REPORTS               0x20000000
+#define HID_QUIRK_NO_IGNORE                     0x40000000
+#define HID_QUIRK_MULTITOUCH			0x00000100
+#define HID_QUIRK_NO_INPUT_SYNC			0x80000000
 /*
  * This is the global environment of the parser. This information is
  * persistent for main-items. The global environment can be saved and
@@ -397,7 +401,7 @@ struct hid_field {
 	__u16 dpad;			/* dpad input code */
 };
 
-#define HID_MAX_FIELDS 64
+#define HID_MAX_FIELDS 128
 
 struct hid_report {
 	struct list_head list;
@@ -469,6 +473,7 @@ struct hid_device {							/* device report descriptor */
 	unsigned country;						/* HID country */
 	struct hid_report_enum report_enum[HID_REPORT_TYPES];
 
+        struct semaphore driver_lock;					/* protects the current driver */
 	struct device dev;						/* device */
 	struct hid_driver *driver;
 	struct hid_ll_driver *ll_driver;
@@ -499,8 +504,11 @@ struct hid_device {							/* device report descriptor */
 				  struct hid_usage *, __s32);
 	void (*hiddev_report_event) (struct hid_device *, struct hid_report *);
 
+         /* handler for raw input (Get_Report) data, used by hidraw */
+	int (*hid_get_raw_report) (struct hid_device *, unsigned char, __u8 *, size_t, unsigned char);
+
 	/* handler for raw output data, used by hidraw */
-	int (*hid_output_raw_report) (struct hid_device *, __u8 *, size_t);
+	int (*hid_output_raw_report) (struct hid_device *, __u8 *, size_t,  unsigned char);
 
 	/* debugging support via debugfs */
 	unsigned short debug;
@@ -628,6 +636,14 @@ struct hid_driver {
 	int (*input_mapped)(struct hid_device *hdev,
 			struct hid_input *hidinput, struct hid_field *field,
 			struct hid_usage *usage, unsigned long **bit, int *max);
+        void (*feature_mapping)(struct hid_device *hdev,
+			struct hid_field *field,
+			struct hid_usage *usage);
+#ifdef CONFIG_PM
+	int (*suspend)(struct hid_device *hdev, pm_message_t message);
+	int (*resume)(struct hid_device *hdev);
+	int (*reset_resume)(struct hid_device *hdev);
+#endif
 /* private: */
 	struct device_driver driver;
 };
@@ -833,3 +849,5 @@ int hid_pidff_init(struct hid_device *hid);
 
 #endif
 
+#define hid_warn(hid, fmt, arg...)                      \
+        dev_warn(&(hid)->dev, fmt, ##arg)
