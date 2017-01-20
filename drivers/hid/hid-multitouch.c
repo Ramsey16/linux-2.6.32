@@ -121,6 +121,7 @@ struct mt_device {
 #define MT_CLS_EGALAX_SERIAL			0x0104
 #define MT_CLS_TOPSEED				0x0105
 #define MT_CLS_PANASONIC			0x0106
+#define MT_CLS_GENERALTOUCH_TWOFINGERS          0x0107
 
 #define MT_DEFAULT_MAXCONTACT	10
 
@@ -218,6 +219,12 @@ static struct mt_class mt_classes[] = {
 	{ .name = MT_CLS_PANASONIC,
 		.quirks = MT_QUIRK_NOT_SEEN_MEANS_UP,
 		.maxcontacts = 4 },
+        { .name = MT_CLS_GENERALTOUCH_TWOFINGERS,
+                .quirks = MT_QUIRK_NOT_SEEN_MEANS_UP |
+                          MT_QUIRK_VALID_IS_INRANGE |
+                          MT_QUIRK_SLOT_IS_CONTACTID,
+                .maxcontacts = 2
+        },
 
 	{ }
 };
@@ -973,7 +980,7 @@ static const struct hid_device_id mt_devices[] = {
 			USB_DEVICE_ID_ELO_TS2515) },
 
 	/* GeneralTouch panel */
-	{ .driver_data = MT_CLS_DUAL_INRANGE_CONTACTNUMBER,
+	{ .driver_data = MT_CLS_GENERALTOUCH_TWOFINGERS,
 		HID_USB_DEVICE(USB_VENDOR_ID_GENERAL_TOUCH,
 			USB_DEVICE_ID_GENERAL_TOUCH_WIN7_TWOFINGERS) },
 
